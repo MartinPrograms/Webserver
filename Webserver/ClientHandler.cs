@@ -1,5 +1,8 @@
-﻿using System.Net.Sockets;
+﻿using System.Net.Security;
+using System.Net.Sockets;
 using Webserver.Settings;
+using System.Security.Cryptography.X509Certificates;
+using System.Security.Authentication;
 
 namespace Webserver;
 
@@ -7,73 +10,119 @@ public class ClientHandler
 {
     private readonly TcpClient _client;
     private readonly ServerSettings _settings;
-
+    private readonly X509Certificate2 _certificate;
+    
     public ClientHandler(TcpClient client, ServerSettings settings)
     {
         _client = client;
         _settings = settings;
+        
+        if (settings.UseSSL)
+        {
+            if (settings.CertificatePassword == null)
+            {
+                // Assume pem
+                _certificate = CertificateManager.LoadCertificate(settings.CertificatePath, settings.CertificatePrivateKeyPath);
+            }
+            else
+            {
+                _certificate = new X509Certificate2(settings.CertificatePath, settings.CertificatePassword);
+            }
+        }
     }
 
     public void Handle()
     {
-        var stream = _client.GetStream();
+        if (_settings.UseSSL)
+        {
+            var sslStream = new SslStream(_client.GetStream(), false);
+            sslStream.AuthenticateAsServer(_certificate, false, SslProtocols.Tls13, true);
+            HandleRequest(sslStream);
+        }
+        else
+        {
+            HandleRequest(_client.GetStream());
+        }
+
+        
+    }
+
+    void HandleRequest(SslStream stream)
+    {
         var reader = new StreamReader(stream);
         var writer = new StreamWriter(stream) { AutoFlush = true };
+
+        ProcessRequest(reader, writer, stream);
+        
+        stream.Close();
+        stream.Dispose();
+    }
+    
+    void HandleRequest(NetworkStream stream)
+    {
+        var reader = new StreamReader(stream);
+        var writer = new StreamWriter(stream) { AutoFlush = true };
+        
+        ProcessRequest(reader, writer, stream);
+        
+        stream.Close();
+        stream.Dispose();
+    }
+
+    private void ProcessRequest(StreamReader reader, StreamWriter writer, Stream stream)
+    {
 
         var request = reader.ReadLine();
         if (request == null)
         {
-            _client.Close();
             return;
         }
-
+        
         var parts = request.Split(' ');
-        var method = parts[0];
-        var url = parts[1];
-        var protocol = parts[2];
-
-        Console.WriteLine($"{DateTime.Now.ToShortTimeString()} : {method} {url} {protocol}");
-
-        var path = _settings.RootDirectory + url;
-        if (url.EndsWith("/"))
+        if (parts.Length != 3)
         {
-            path += _settings.DefaultPage;
+            return;
         }
-
-        if (File.Exists(path))
+        
+        var method = parts[0];
+        var path = parts[1];
+        var protocol = parts[2];
+        
+        if (method != "GET")
         {
-            var extension = Path.GetExtension(path);
+            writer.WriteLine("HTTP/1.1 405 Method Not Allowed");
+            return;
+        }
+        
+        if (path == "/")
+        {
+            path = _settings.DefaultPage;
+        }
+        
+        var filePath = Path.Combine(_settings.RootDirectory, path.TrimStart('/'));
+        
+        if (File.Exists(filePath))
+        {
+            var extension = Path.GetExtension(filePath);
             var contentType = GetContentType(extension);
-            var content = File.ReadAllText(path);
-
+            
             writer.WriteLine($"HTTP/1.1 200 OK");
             writer.WriteLine($"Content-Type: {contentType}");
-            writer.WriteLine($"Content-Length: {content.Length}");
             writer.WriteLine();
-            writer.WriteLine(content);
+            
+            using var fileStream = File.OpenRead(filePath);
+            fileStream.CopyTo(stream);
         }
         else
         {
-            // Read the 404 file
-            if (File.Exists(_settings.Error404))
-            {
-                var content = File.ReadAllText(_settings.Error404);
-                writer.WriteLine($"HTTP/1.1 404 Not Found");
-                writer.WriteLine($"Content-Type: text/html");
-                writer.WriteLine($"Content-Length: {content.Length}");
-                writer.WriteLine();
-                writer.WriteLine(content);
-            }
-            else
-            {
-                writer.WriteLine($"HTTP/1.1 404 Not Found");
-                writer.WriteLine($"Content-Type: text/html");
-                writer.WriteLine($"Content-Length: 0");
-                writer.WriteLine();
-            }
+            writer.WriteLine($"HTTP/1.1 404 Not Found");
+            writer.WriteLine($"Content-Type: text/html");
+            writer.WriteLine();
+            
+            var errorPath = Path.Combine(_settings.RootDirectory, _settings.Error404);
+            using var fileStream = File.OpenRead(errorPath);
+            fileStream.CopyTo(stream);
         }
-
-        _client.Close();
     }
 
     private string GetContentType(string extension)

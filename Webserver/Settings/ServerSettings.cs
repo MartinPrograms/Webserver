@@ -10,8 +10,8 @@ public class ServerSettings
     public string ServerName { get; set; } = "Webserver"; // The name of the server, so we can listen for multiple servers on the same port
     
     public bool UseSSL { get; set; } = false; // If true, the server will use HTTPS instead of HTTP
-    public string CertificatePath { get; set; } = "cert.pfx"; // The path to the certificate file
-    public string CertificatePassword { get; set; } = "password"; // The password to the certificate file
+    public string CertificatePath { get; set; } = "certificate.pem"; // The path to the certificate file
+    public string? CertificatePassword { get; set; } // The password to the certificate file
     
     public string Error404 { get; set; } = "Default/404.html"; // The file to show if the file is not found
     
@@ -23,4 +23,5 @@ public class ServerSettings
     public string ExtensionPattern { get; set; } = "*.html"; // automatically add .html to the end of the URL if the file is not found
     public string DefaultPage { get; set; } = "index.html"; // The default page to look for if the URL is a directory
     public string HostV6 { get; set; } = "::1"; // Only local connections are allowed
+    public string CertificatePrivateKeyPath { get; set; } = "privkey.pem"; // The path to the private key file
 }

@@ -8,6 +8,11 @@ serverSettings.HostV6 = "::"; // Any
 serverSettings.Port = 25501;
 serverSettings.RootDirectory = @"Example/";
 
+// SSL 
+serverSettings.UseSSL = true;
+serverSettings.CertificatePath = "certificate.pem";
+serverSettings.CertificatePrivateKeyPath = "privkey.pem";
+
 var server = new Server(serverSettings);
 server.Start();
 
