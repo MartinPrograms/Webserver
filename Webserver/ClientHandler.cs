@@ -1,4 +1,5 @@
-﻿using System.Net.Security;
+﻿using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using Webserver.Settings;
 using System.Security.Cryptography.X509Certificates;
@@ -16,18 +17,10 @@ public class ClientHandler
     {
         _client = client;
         _settings = settings;
-        
+
         if (settings.UseSSL)
         {
-            if (settings.CertificatePassword == null)
-            {
-                // Assume pem
-                _certificate = CertificateManager.LoadCertificate(settings.CertificatePath, settings.CertificatePrivateKeyPath);
-            }
-            else
-            {
-                _certificate = new X509Certificate2(settings.CertificatePath, settings.CertificatePassword);
-            }
+            _certificate = new X509Certificate2(settings.CertificatePath, settings.CertificatePassword);
         }
     }
 
@@ -43,86 +36,52 @@ public class ClientHandler
         {
             HandleRequest(_client.GetStream());
         }
-
-        
     }
 
-    void HandleRequest(SslStream stream)
+    private void HandleRequest(Stream sslStream)
     {
-        var reader = new StreamReader(stream);
-        var writer = new StreamWriter(stream) { AutoFlush = true };
-
-        ProcessRequest(reader, writer, stream);
-        
-        stream.Close();
-        stream.Dispose();
-    }
-    
-    void HandleRequest(NetworkStream stream)
-    {
-        var reader = new StreamReader(stream);
-        var writer = new StreamWriter(stream) { AutoFlush = true };
-        
-        ProcessRequest(reader, writer, stream);
-        
-        stream.Close();
-        stream.Dispose();
-    }
-
-    private void ProcessRequest(StreamReader reader, StreamWriter writer, Stream stream)
-    {
+        var reader = new StreamReader(sslStream);
+        var writer = new StreamWriter(sslStream) { AutoFlush = true };
 
         var request = reader.ReadLine();
-        if (request == null)
-        {
-            return;
-        }
-        
+
         var parts = request.Split(' ');
-        if (parts.Length != 3)
-        {
-            return;
-        }
-        
-        var method = parts[0];
-        var path = parts[1];
-        var protocol = parts[2];
-        
-        if (method != "GET")
-        {
-            writer.WriteLine("HTTP/1.1 405 Method Not Allowed");
-            return;
-        }
-        
-        if (path == "/")
+        var path = parts[1].Substring(1);
+
+        if (path == "")
         {
             path = _settings.DefaultPage;
         }
         
-        var filePath = Path.Combine(_settings.RootDirectory, path.TrimStart('/'));
+        Console.WriteLine($"{parts[0]} {path} at {DateTime.Now}");
         
-        if (File.Exists(filePath))
+        if (path.EndsWith("/"))
         {
-            var extension = Path.GetExtension(filePath);
-            var contentType = GetContentType(extension);
-            
-            writer.WriteLine($"HTTP/1.1 200 OK");
-            writer.WriteLine($"Content-Type: {contentType}");
-            writer.WriteLine();
-            
-            using var fileStream = File.OpenRead(filePath);
-            fileStream.CopyTo(stream);
+            path += _settings.DefaultPage;
         }
-        else
+        
+        if (!File.Exists(_settings.RootDirectory + path))
         {
-            writer.WriteLine($"HTTP/1.1 404 Not Found");
+            writer.WriteLine("HTTP/1.1 404 Not Found");
             writer.WriteLine($"Content-Type: text/html");
-            writer.WriteLine();
             
-            var errorPath = Path.Combine(_settings.RootDirectory, _settings.Error404);
-            using var fileStream = File.OpenRead(errorPath);
-            fileStream.CopyTo(stream);
+            var file = File.ReadAllText(_settings.Error404);
+            writer.WriteLine($"Content-Length: {file.Length}");
+            writer.WriteLine();
+            writer.WriteLine(file);
+            return;
         }
+        
+        var extension = Path.GetExtension(path);
+        writer.WriteLine("HTTP/1.1 200 OK");
+        writer.WriteLine($"Content-Type: {GetContentType(extension)}");
+        
+        var content = File.ReadAllText(_settings.RootDirectory + path);
+        writer.WriteLine($"Content-Length: {content.Length}");
+        writer.WriteLine();
+        writer.WriteLine(content);
+        
+        _client.Close();
     }
 
     private string GetContentType(string extension)

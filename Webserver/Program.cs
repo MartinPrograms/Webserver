@@ -5,13 +5,13 @@ var serverSettings = new ServerSettings();
 
 serverSettings.Host = "0.0.0.0"; // Any
 serverSettings.HostV6 = "::"; // Any
-serverSettings.Port = 25501;
+serverSettings.Port = 443;
 serverSettings.RootDirectory = @"Example/";
 
 // SSL 
 serverSettings.UseSSL = true;
-serverSettings.CertificatePath = "certificate.pem";
-serverSettings.CertificatePrivateKeyPath = "privkey.pem";
+serverSettings.CertificatePath = "test.pfx";
+serverSettings.CertificatePassword = "testing";
 
 var server = new Server(serverSettings);
 server.Start();
