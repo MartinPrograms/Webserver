@@ -5,7 +5,7 @@ var serverSettings = new ServerSettings();
 
 serverSettings.Host = "0.0.0.0"; // Any
 serverSettings.HostV6 = "::"; // Any
-serverSettings.Port = 443;
+serverSettings.Port = 25501;
 serverSettings.RootDirectory = @"Example/";
 
 // SSL 
